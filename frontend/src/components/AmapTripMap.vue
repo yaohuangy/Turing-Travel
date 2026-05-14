@@ -29,8 +29,8 @@ let AMapLib: any = null;
 const markerMap = new Map<string, any>();
 
 const DAY_COLORS = [
-  "#1677ff", "#52c41a", "#fa8c16", "#eb2f96",
-  "#722ed1", "#13c2c2", "#f5222d", "#faad14",
+  "#E74C3C", "#3498DB", "#2ECC71", "#F39C12",
+  "#9B59B6", "#1ABC9C", "#E67E22", "#2980B9",
 ];
 
 function dayColor(dayIndex: number): string {
@@ -51,22 +51,28 @@ function collectValidPoints(): { points: [number, number][]; count: number; tota
   return { points, count: points.length, total };
 }
 
-function buildInfoContent(spot: SpotItem): string {
-  const missing = !spotHasCoords(spot);
+function buildInfoContent(spot: SpotItem, dayIdx: number, spotIdx: number): string {
   const imgEl = spot.image_url
-    ? `<br/><img src="${spot.image_url}" style="max-width:200px;max-height:150px;margin-top:6px;border-radius:6px" />`
-    : "";
-  const coordsInfo = missing
-    ? `<br/><span style="color:#ff4d4f;font-size:12px">⚠️ 位置信息暂缺</span>`
+    ? `<br/><img src="${spot.image_url}" style="max-width:200px;max-height:150px;margin-top:6px;border-radius:6px" onerror="this.style.display='none'" />`
     : "";
   return `
     <div style="max-width:260px;font-size:13px;line-height:1.6">
+      <span style="font-size:11px;color:#999;background:#f0f0f0;padding:1px 6px;border-radius:4px">D${dayIdx + 1} · 第${spotIdx + 1}站</span>
+      <br/>
       <strong style="font-size:14px">${spot.name}</strong>
-      ${spot.visit_duration ? `<br/>⏱ ${spot.visit_duration}` : ""}
-      ${spot.description ? `<br/>${spot.description}` : ""}
+      ${spot.visit_duration ? `<br/>⏱ 建议游玩：${spot.visit_duration}` : ""}
       ${spot.address ? `<br/>📍 ${spot.address}` : ""}
-      ${coordsInfo}
+      ${spot.description ? `<br/><span style="color:#666">${spot.description}</span>` : ""}
       ${imgEl}
+    </div>`;
+}
+
+function buildMarkerContent(spotName: string, dayIdx: number, color: string): string {
+  const d = dayIdx + 1;
+  return `
+    <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${color};color:#fff;border-radius:20px;font-size:11px;white-space:nowrap;cursor:pointer;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,0.25)">
+      <span style="background:rgba(255,255,255,0.25);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${d}</span>
+      ${spotName}
     </div>`;
 }
 
@@ -77,13 +83,11 @@ async function initMap() {
   }
   if (!mapContainer.value) return;
 
-  // Destroy previous instance before re-creating
   if (mapInstance) {
     destroyMap();
   }
 
   try {
-    // Set Amap security config BEFORE loading the SDK (required for v2.0)
     if (AMAP_SECRET) {
       (window as any)._AMapSecurityConfig = {
         securityJsCode: AMAP_SECRET,
@@ -98,6 +102,8 @@ async function initMap() {
 
     const { points, total } = collectValidPoints();
     hasValidCoords.value = points.length > 0;
+    missingCoordsHint.value = "";
+
     let center: [number, number] = [116.397, 39.909];
     let zoom = 12;
 
@@ -116,6 +122,8 @@ async function initMap() {
       }
       if (total > 0) {
         missingCoordsHint.value = `${total} 个景点坐标缺失，地图已定位到城市中心`;
+      } else if (props.days.length > 0) {
+        missingCoordsHint.value = "暂无景点坐标数据，地图已定位到城市中心";
       }
     }
 
@@ -127,7 +135,6 @@ async function initMap() {
     mapLoaded.value = true;
     mapError.value = "";
 
-    // Render after map is complete to ensure container is sized
     mapInstance.on("complete", () => {
       renderTrips();
     });
@@ -150,36 +157,38 @@ function renderTrips() {
   mapInstance.clearMap();
   markerMap.clear();
 
-  const infoWindow = new AMapLib.InfoWindow({ offset: new AMapLib.Pixel(0, -30) });
+  const infoWindow = new AMapLib.InfoWindow({ offset: new AMapLib.Pixel(0, -36) });
   const allPoints: any[] = [];
+  let totalValidSpots = 0;
 
   for (const day of props.days) {
     const color = dayColor(day.day_index);
     const dayPoints: any[] = [];
+    let skipped = 0;
 
     for (let si = 0; si < day.spots.length; si++) {
       const spot = day.spots[si];
       const key = `${day.day_index}-${si}`;
 
-      if (!spotHasCoords(spot)) continue;
+      if (!spotHasCoords(spot)) {
+        skipped++;
+        continue;
+      }
 
       const pt = new AMapLib.LngLat(spot.location!.lng, spot.location!.lat);
       dayPoints.push(pt);
       allPoints.push(pt);
-
-      const content = `
-        <div style="padding:4px 10px;background:${color};color:#fff;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,0.2)">
-          ${spot.name}
-        </div>`;
+      totalValidSpots++;
 
       const marker = new AMapLib.Marker({
         position: pt,
-        content,
+        content: buildMarkerContent(spot.name, day.day_index, color),
         zIndex: 100,
+        offset: new AMapLib.Pixel(0, -10),
       });
 
       marker.on("click", () => {
-        infoWindow.setContent(buildInfoContent(spot));
+        infoWindow.setContent(buildInfoContent(spot, day.day_index, si));
         infoWindow.open(mapInstance, marker.getPosition());
         emit("marker-click", spot, day.day_index);
       });
@@ -188,21 +197,32 @@ function renderTrips() {
       markerMap.set(key, marker);
     }
 
-    if (dayPoints.length >= 2) {
+    if (skipped > 0) {
+      console.warn(
+        `[AmapTripMap] D${day.day_index + 1}：${skipped} 个景点坐标缺失，已跳过`
+      );
+    }
+
+    if (dayPoints.length === 0) {
+      console.warn(
+        `[AmapTripMap] D${day.day_index + 1}：无有效坐标，不绘制路线`
+      );
+    } else if (dayPoints.length >= 2) {
       const polyline = new AMapLib.Polyline({
         path: dayPoints,
         strokeColor: color,
-        strokeWeight: 4,
-        strokeOpacity: 0.6,
+        strokeWeight: 5,
+        strokeOpacity: 0.65,
         strokeStyle: "solid",
         showDir: true,
+        dirColor: color,
       });
       polyline.setMap(mapInstance);
     }
   }
 
   if (allPoints.length > 0) {
-    mapInstance.setFitView(allPoints, false, [60, 60, 60, 60]);
+    mapInstance.setFitView(allPoints, false, [70, 70, 70, 70]);
   }
 }
 
@@ -211,7 +231,7 @@ function locateSpot(dayIndex: number, spotIndex: number) {
   const key = `${dayIndex}-${spotIndex}`;
   const marker = markerMap.get(key);
   if (marker) {
-    const pos = marker.getPosition(); // returns LngLat
+    const pos = marker.getPosition();
     mapInstance.setZoomAndCenter(16, pos);
     marker.emit("click");
   }
@@ -219,11 +239,7 @@ function locateSpot(dayIndex: number, spotIndex: number) {
 
 function destroyMap() {
   if (mapInstance) {
-    try {
-      mapInstance.destroy();
-    } catch (e) {
-      // ignore destroy errors
-    }
+    try { mapInstance.destroy(); } catch (e) { /* ignore */ }
     mapInstance = null;
   }
   markerMap.clear();
@@ -253,9 +269,7 @@ watch(
 );
 
 onMounted(() => {
-  nextTick(() => {
-    initMap();
-  });
+  nextTick(() => initMap());
 });
 
 onUnmounted(() => destroyMap());
@@ -304,6 +318,7 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
   font-weight: 500;
   text-align: center;
   padding: 0 24px;
+  line-height: 1.6;
 }
 .coords-hint {
   position: absolute;
@@ -318,5 +333,19 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
   font-size: 12px;
   pointer-events: none;
   white-space: nowrap;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .amap-container {
+    height: 380px;
+    border-radius: 10px;
+  }
+  .map-box {
+    height: 380px;
+  }
+  .map-placeholder {
+    height: 380px;
+  }
 }
 </style>
