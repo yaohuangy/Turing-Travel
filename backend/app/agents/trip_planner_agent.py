@@ -159,6 +159,32 @@ def _extract_json(text: str) -> dict:
     return json.loads(text)
 
 
+def _normalize(data: dict) -> dict:
+    """Normalize LLM output to match Pydantic types.
+
+    DeepSeek models sometimes emit `[]` for empty string fields.
+    """
+    STRING_FIELDS = {"name", "address", "visit_duration", "description", "condition", "wind", "type", "date"}
+    NULLABLE_FIELDS = {"image_url", "poi_id", "location", "weather", "hotel", "route_estimate"}
+
+    def _fix(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if isinstance(v, list) and len(v) == 0:
+                    if k in STRING_FIELDS:
+                        obj[k] = ""
+                    elif k in NULLABLE_FIELDS:
+                        obj[k] = None
+                elif isinstance(v, (dict, list)):
+                    _fix(v)
+        elif isinstance(obj, list):
+            for item in obj:
+                _fix(item)
+
+    _fix(data)
+    return data
+
+
 def _build_fallback_itinerary(req: TripRequest) -> dict:
     """Build a minimal valid itinerary when LLM generation fails completely."""
     logger.warning("Building fallback itinerary for %s", req.destination)
@@ -241,7 +267,7 @@ def generate_itinerary(req: TripRequest) -> dict:
             )
 
             content = resp.output.choices[0].message.content
-            result = _extract_json(content)
+            result = _normalize(_extract_json(content))
             logger.info("LLM generation succeeded on attempt %d", attempt)
             return result
 

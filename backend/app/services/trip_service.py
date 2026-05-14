@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 import dashscope
 from dashscope import Generation
 
-from app.agents.trip_planner_agent import generate_itinerary, _extract_json
+from app.agents.trip_planner_agent import _normalize, generate_itinerary, _extract_json
 from app.config import settings
 from app.models.schemas import TripRequest
 from app.services import map_service, storage_service, weather_service
@@ -178,7 +178,7 @@ async def edit_day(trip_id: str, day_index: int, edit_instruction: str) -> dict:
                 raise RuntimeError(f"DashScope API error: {resp.status_code}, message={resp.message}")
 
             content = resp.output.choices[0].message.content
-            new_day = _extract_json(content)
+            new_day = _normalize(_extract_json(content))
             # Preserve original day_index, date, weather
             new_day["day_index"] = original_day.get("day_index", day_index)
             new_day["date"] = original_day.get("date", new_day.get("date", ""))
