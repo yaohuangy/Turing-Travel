@@ -5,7 +5,6 @@ import type { DayPlan, SpotItem } from "../types";
 import { useAppStore } from "../stores/app";
 import { spotHasCoords } from "../utils";
 import { getCityCoords } from "../utils/cities";
-import { fetchAmapKey } from "../services/api";
 
 const props = defineProps<{
   days: DayPlan[];
@@ -16,17 +15,16 @@ const emit = defineEmits<{
 }>();
 
 const store = useAppStore();
-const amapKey = ref("");
-const mapError = ref("");
+const AMAP_KEY = import.meta.env.VITE_AMAP_JS_KEY || "";
 const mapContainer = ref<HTMLDivElement>();
 const mapLoaded = ref(false);
+const mapError = ref("");
 const hasValidCoords = ref(false);
 const missingCoordsHint = ref("");
 
 let mapInstance: any = null;
 let AMapLib: any = null;
 
-// Store marker refs keyed by "dayIndex-spotIndex" for external locate calls
 const markerMap = new Map<string, any>();
 
 const DAY_COLORS = [
@@ -38,7 +36,6 @@ function dayColor(dayIndex: number): string {
   return DAY_COLORS[dayIndex % DAY_COLORS.length];
 }
 
-/** Collect all valid coordinates from days */
 function collectValidPoints(): { points: [number, number][]; count: number; total: number } {
   const points: [number, number][] = [];
   let total = 0;
@@ -53,7 +50,6 @@ function collectValidPoints(): { points: [number, number][]; count: number; tota
   return { points, count: points.length, total };
 }
 
-/** Build InfoWindow HTML for a spot */
 function buildInfoContent(spot: SpotItem): string {
   const missing = !spotHasCoords(spot);
   const imgEl = spot.image_url
@@ -74,28 +70,19 @@ function buildInfoContent(spot: SpotItem): string {
 }
 
 async function initMap() {
-  if (!amapKey.value) {
-    try {
-      amapKey.value = await fetchAmapKey();
-    } catch {
-      mapError.value = "无法获取地图配置，请检查后端服务是否运行";
-      return;
-    }
-  }
-  if (!amapKey.value) {
-    mapError.value = "地图 Key 未配置，请在 backend/.env 中设置 AMAP_JS_API_KEY";
+  if (!AMAP_KEY) {
+    mapError.value = "地图 Key 未配置，请在 frontend/.env 中设置 VITE_AMAP_JS_KEY";
     return;
   }
   if (!mapContainer.value) return;
 
   try {
     AMapLib = await AMapLoader.load({
-      key: amapKey.value,
+      key: AMAP_KEY,
       version: "2.0",
       plugins: ["AMap.Marker", "AMap.Polyline", "AMap.InfoWindow"],
     });
 
-    // Determine initial center
     const { points, total } = collectValidPoints();
     hasValidCoords.value = points.length > 0;
     let center: [number, number] = [116.397, 39.909];
@@ -128,7 +115,7 @@ async function initMap() {
     mapLoaded.value = true;
   } catch (err: any) {
     console.error("AMap load failed:", err);
-    mapError.value = "地图加载失败，请检查网络或 API Key 是否正确";
+    mapError.value = "地图加载失败，请检查网络或高德 JS API Key 是否正确";
   }
 }
 
@@ -138,7 +125,6 @@ function renderTrips() {
   mapInstance.clearMap();
   markerMap.clear();
 
-  const allMarkers: any[] = [];
   const infoWindow = new AMapLib.InfoWindow({ offset: new AMapLib.Pixel(0, -30) });
   const allPoints: [number, number][] = [];
 
@@ -149,18 +135,10 @@ function renderTrips() {
     for (let si = 0; si < day.spots.length; si++) {
       const spot = day.spots[si];
       const key = `${day.day_index}-${si}`;
-      let lng: number, lat: number;
-      let hasCoords = spotHasCoords(spot);
 
-      if (hasCoords) {
-        lng = spot.location!.lng;
-        lat = spot.location!.lat;
-      } else {
-        // If no coords, skip drawing marker but still could be listed
-        continue;
-      }
+      if (!spotHasCoords(spot)) continue;
 
-      const pt: [number, number] = [lng, lat];
+      const pt: [number, number] = [spot.location!.lng, spot.location!.lat];
       dayPoints.push(pt);
       allPoints.push(pt);
 
@@ -182,11 +160,9 @@ function renderTrips() {
       });
 
       marker.setMap(mapInstance);
-      allMarkers.push(marker);
       markerMap.set(key, marker);
     }
 
-    // Draw polylines
     if (dayPoints.length >= 2) {
       const polyline = new AMapLib.Polyline({
         path: dayPoints,
@@ -200,13 +176,11 @@ function renderTrips() {
     }
   }
 
-  // Fit view
   if (allPoints.length > 0) {
     mapInstance.setFitView(allPoints, false, [60, 60, 60, 60]);
   }
 }
 
-/** Exposed: locate and trigger marker click for a spot */
 function locateSpot(dayIndex: number, spotIndex: number) {
   if (!mapInstance || !AMapLib) return;
   const key = `${dayIndex}-${spotIndex}`;
@@ -214,7 +188,6 @@ function locateSpot(dayIndex: number, spotIndex: number) {
   if (marker) {
     const pos = marker.getPosition();
     mapInstance.setZoomAndCenter(16, pos);
-    // Simulate click
     marker.emit("click");
   }
 }
@@ -259,10 +232,10 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
     <div v-if="mapError" class="map-placeholder map-error">
       <p>{{ mapError }}</p>
     </div>
-    <div v-else-if="!amapKey" class="map-placeholder">
-      <p>正在加载地图配置...</p>
+    <div v-else-if="!mapLoaded && !AMAP_KEY" class="map-placeholder">
+      <p>地图 Key 未配置</p>
     </div>
-    <div v-else ref="mapContainer" class="map-box"></div>
+    <div ref="mapContainer" class="map-box" :class="{ 'map-hidden': !AMAP_KEY && !mapLoaded }"></div>
     <div v-if="missingCoordsHint" class="coords-hint">
       ⚠️ {{ missingCoordsHint }}
     </div>
@@ -281,15 +254,16 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
 }
 .map-box {
   width: 100%;
-  height: 100%;
-  min-height: 400px;
+  height: 400px;
+}
+.map-hidden {
+  display: none;
 }
 .map-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  min-height: 400px;
+  height: 400px;
   color: #999;
 }
 .map-error p {
