@@ -6,6 +6,32 @@ const api = axios.create({
   timeout: 120000, // 2 minutes — LLM generation can take 40-90s
 });
 
+// Attach auth token to every request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("tt_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Redirect to login on 401
+api.interceptors.response.use(
+  (resp) => resp,
+  (err) => {
+    if (err?.response?.status === 401) {
+      localStorage.removeItem("tt_token");
+      localStorage.removeItem("tt_username");
+      localStorage.removeItem("tt_user_id");
+      // Reload to show login page
+      if (window.location.pathname !== "/") {
+        window.location.reload();
+      }
+    }
+    return Promise.reject(err);
+  }
+);
+
 let _amapKey: string | null = null;
 
 export async function fetchAmapKey(): Promise<string> {

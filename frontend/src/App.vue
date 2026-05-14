@@ -1,10 +1,25 @@
 <script setup lang="ts">
+import { ref } from "vue";
 import Home from "./views/Home.vue";
 import Result from "./views/Result.vue";
 import History from "./views/History.vue";
+import Login from "./views/Login.vue";
 import { useAppStore } from "./stores/app";
+import { useAuthStore } from "./stores/auth";
 
 const store = useAppStore();
+const auth = useAuthStore();
+const showLogin = ref(!auth.isLoggedIn());
+
+function onLoggedIn() {
+  showLogin.value = false;
+}
+
+function handleLogout() {
+  auth.logout();
+  showLogin.value = true;
+  store.switchTab("home");
+}
 </script>
 
 <template>
@@ -28,11 +43,16 @@ const store = useAppStore();
             <h1 class="logo-title">途灵旅行</h1>
           </div>
           <p class="logo-subtitle">AI 驱动的智能旅行规划助手</p>
+          <div v-if="auth.isLoggedIn()" class="header-user">
+            <span class="user-name">👤 {{ auth.username }}</span>
+            <a-button type="link" size="small" class="logout-btn" @click="handleLogout">退出</a-button>
+          </div>
         </div>
       </header>
 
       <main class="app-main">
-        <a-card class="tab-card" :body-style="{ padding: '0 24px 24px' }">
+        <Login v-if="showLogin" @logged-in="onLoggedIn" />
+        <a-card v-else class="tab-card" :body-style="{ padding: '0 24px 24px' }">
           <a-tabs
             v-model:activeKey="store.activeKey"
             :tab-bar-style="{ paddingLeft: '24px', marginBottom: '0' }"
@@ -123,6 +143,25 @@ body {
   font-size: 15px;
   margin: 0;
   letter-spacing: 1px;
+}
+
+.header-user {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.user-name {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+}
+.logout-btn {
+  color: rgba(255, 255, 255, 0.7) !important;
+  font-size: 12px;
+}
+.logout-btn:hover {
+  color: #fff !important;
 }
 
 /* Main content */

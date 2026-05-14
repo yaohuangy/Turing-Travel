@@ -2,10 +2,12 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.dependencies import get_current_user_id
+from app.api.routes.auth import router as auth_router
 from app.api.routes.config import router as config_router
 from app.api.routes.export import router as export_router
 from app.api.routes.trip import router as trip_router
@@ -46,6 +48,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router)
 app.include_router(config_router)
 app.include_router(trip_router)
 app.include_router(weather_router)
@@ -62,9 +65,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 @app.get("/api/trips")
-async def list_trips():
+async def list_trips(user_id: str = Depends(get_current_user_id)):
     try:
-        return storage_service.list_all()
+        return storage_service.list_all(user_id=user_id)
     except Exception as e:
         logger.error("Failed to list trips: %s", e)
         raise HTTPException(status_code=500, detail=f"查询失败: {e}")

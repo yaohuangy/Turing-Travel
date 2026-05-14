@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     DASHSCOPE_API_KEY: str = ""
     AMAP_API_KEY: str = ""
+    AMAP_JS_API_KEY: str = ""
     DATABASE_URL: str = "sqlite:///./data/turing_travel.db"
     REDIS_URL: str = "redis://localhost:6379/0"
     LOG_LEVEL: str = "INFO"

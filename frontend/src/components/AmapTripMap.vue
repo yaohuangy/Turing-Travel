@@ -17,6 +17,7 @@ const emit = defineEmits<{
 
 const store = useAppStore();
 const amapKey = ref("");
+const mapError = ref("");
 const mapContainer = ref<HTMLDivElement>();
 const mapLoaded = ref(false);
 const hasValidCoords = ref(false);
@@ -73,7 +74,16 @@ function buildInfoContent(spot: SpotItem): string {
 }
 
 async function initMap() {
-  if (!amapKey.value && !(amapKey.value = await fetchAmapKey().catch(() => ""))) {
+  if (!amapKey.value) {
+    try {
+      amapKey.value = await fetchAmapKey();
+    } catch {
+      mapError.value = "无法获取地图配置，请检查后端服务是否运行";
+      return;
+    }
+  }
+  if (!amapKey.value) {
+    mapError.value = "地图 Key 未配置，请在 backend/.env 中设置 AMAP_JS_API_KEY";
     return;
   }
   if (!mapContainer.value) return;
@@ -116,8 +126,9 @@ async function initMap() {
 
     renderTrips();
     mapLoaded.value = true;
-  } catch (err) {
+  } catch (err: any) {
     console.error("AMap load failed:", err);
+    mapError.value = "地图加载失败，请检查网络或 API Key 是否正确";
   }
 }
 
@@ -245,7 +256,10 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
 
 <template>
   <div class="amap-container">
-    <div v-if="!amapKey" class="map-placeholder">
+    <div v-if="mapError" class="map-placeholder map-error">
+      <p>{{ mapError }}</p>
+    </div>
+    <div v-else-if="!amapKey" class="map-placeholder">
       <p>正在加载地图配置...</p>
     </div>
     <div v-else ref="mapContainer" class="map-box"></div>
@@ -277,6 +291,10 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
   height: 100%;
   min-height: 400px;
   color: #999;
+}
+.map-error p {
+  color: #ff4d4f;
+  font-weight: 500;
 }
 .coords-hint {
   position: absolute;

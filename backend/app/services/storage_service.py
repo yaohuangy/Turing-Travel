@@ -27,12 +27,14 @@ def save(
     start_date: date,
     end_date: date,
     itinerary: dict,
+    user_id: str = "",
 ) -> str:
     """Save a trip itinerary. Returns the trip_id."""
     budget = itinerary.get("budget", {})
     total_budget = budget.get("total", 0) if isinstance(budget, dict) else 0
 
     record = TripRecord(
+        user_id=user_id or None,
         name=name,
         destination=destination,
         start_date=start_date,
@@ -45,7 +47,7 @@ def save(
         session.add(record)
         session.commit()
         trip_id = record.id
-        logger.info("Trip saved: id=%s, name=%s", trip_id, name)
+        logger.info("Trip saved: id=%s, name=%s, user=%s", trip_id, name, user_id)
         return trip_id
     except Exception as e:
         session.rollback()
@@ -55,12 +57,14 @@ def save(
         session.close()
 
 
-def get_by_id(trip_id: str) -> Optional[dict]:
+def get_by_id(trip_id: str, user_id: str = "") -> Optional[dict]:
     """Get a trip by ID. Returns the full itinerary dict with metadata, or None."""
     session = get_session()
     try:
         record = session.get(TripRecord, trip_id)
         if record is None:
+            return None
+        if user_id and record.user_id and record.user_id != user_id:
             return None
         itinerary = json.loads(record.itinerary_json)
         itinerary["trip_id"] = record.id
@@ -74,11 +78,14 @@ def get_by_id(trip_id: str) -> Optional[dict]:
         session.close()
 
 
-def list_all() -> list[dict]:
-    """List all saved trips (summary only)."""
+def list_all(user_id: str = "") -> list[dict]:
+    """List all saved trips for a user (summary only)."""
     session = get_session()
     try:
-        records = session.query(TripRecord).order_by(TripRecord.created_at.desc()).all()
+        q = session.query(TripRecord).order_by(TripRecord.created_at.desc())
+        if user_id:
+            q = q.filter(TripRecord.user_id == user_id)
+        records = q.all()
         return [_record_to_dict(r) for r in records]
     except Exception as e:
         logger.error("Failed to list trips: %s", e)
@@ -87,12 +94,14 @@ def list_all() -> list[dict]:
         session.close()
 
 
-def delete(trip_id: str) -> bool:
+def delete(trip_id: str, user_id: str = "") -> bool:
     """Delete a trip. Returns True if deleted, False if not found."""
     session = get_session()
     try:
         record = session.get(TripRecord, trip_id)
         if record is None:
+            return False
+        if user_id and record.user_id and record.user_id != user_id:
             return False
         session.delete(record)
         session.commit()
