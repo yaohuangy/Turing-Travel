@@ -1,0 +1,55 @@
+# {{ destination }} 旅行行程
+
+**日期：** {{ start_date }} ~ {{ end_date }}
+
+---
+
+{% for day in days %}
+## 第 {{ day.day_index + 1 }} 天 — {{ day.date }}
+
+{% if day.weather %}
+**天气：** {{ day.weather.condition }}，{{ day.weather.temp_low }}°C ~ {{ day.weather.temp_high }}°C
+{% endif %}
+
+### 景点
+
+{% for spot in day.spots %}
+- **{{ spot.name }}**（建议游玩 {{ spot.visit_duration }}）
+  {% if spot.description %}{{ spot.description }}{% endif %}
+  {% if spot.address %}  📍 {{ spot.address }}{% endif %}
+{% endfor %}
+
+### 餐饮
+
+| 餐次 | 推荐 |
+|------|------|
+| 早餐 | {{ day.meals | selectattr("type", "equalto", "breakfast") | map(attribute="name") | first | default("—") }} |
+| 午餐 | {{ day.meals | selectattr("type", "equalto", "lunch") | map(attribute="name") | first | default("—") }} |
+| 晚餐 | {{ day.meals | selectattr("type", "equalto", "dinner") | map(attribute="name") | first | default("—") }} |
+
+{% if day.hotel %}
+### 住宿
+
+- **{{ day.hotel.name }}**（{{ day.hotel.location }}）— ¥{{ day.hotel.estimated_price }}/晚
+{% endif %}
+
+{% if day.route_estimate %}
+### 交通
+
+- 驾车约 {{ day.route_estimate.distance_km }} km，预计 {{ day.route_estimate.duration_min }} 分钟
+{% endif %}
+
+---
+
+{% endfor %}
+
+## 预算明细
+
+| 项目 | 费用（元） |
+|------|-----------|
+| 交通 | ¥{{ budget.transportation }} |
+| 住宿 | ¥{{ budget.accommodation }} |
+| 餐饮 | ¥{{ budget.meals }} |
+| 门票 | ¥{{ budget.tickets }} |
+| 其他 | ¥{{ budget.other }} |
+| **总计** | **¥{{ budget.total }}** |

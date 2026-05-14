@@ -1,0 +1,56 @@
+[
+  {
+    "id": "dali_01",
+    "query": "我想去洱海环湖骑行",
+    "city": "dali",
+    "expected_chunks": ["dali_chunk_001"]
+  },
+  {
+    "id": "dali_02",
+    "query": "大理有什么好吃的白族菜",
+    "city": "dali",
+    "expected_chunks": ["dali_chunk_004"]
+  },
+  {
+    "id": "dali_03",
+    "query": "大理三天行程怎么安排",
+    "city": "dali",
+    "expected_chunks": ["dali_chunk_008"]
+  },
+  {
+    "id": "hangzhou_01",
+    "query": "西湖有哪些必去景点",
+    "city": "hangzhou",
+    "expected_chunks": ["hangzhou_chunk_001"]
+  },
+  {
+    "id": "hangzhou_02",
+    "query": "灵隐寺值得去吗，门票多少",
+    "city": "hangzhou",
+    "expected_chunks": ["hangzhou_chunk_002"]
+  },
+  {
+    "id": "hangzhou_03",
+    "query": "杭州有什么特色美食推荐",
+    "city": "hangzhou",
+    "expected_chunks": ["hangzhou_chunk_005"]
+  },
+  {
+    "id": "chengdu_01",
+    "query": "成都看大熊猫去哪里",
+    "city": "chengdu",
+    "expected_chunks": ["chengdu_chunk_001"]
+  },
+  {
+    "id": "chengdu_02",
+    "query": "成都火锅推荐",
+    "city": "chengdu",
+    "expected_chunks": ["chengdu_chunk_006"]
+  },
+  {
+    "id": "chengdu_03",
+    "query": "宽窄巷子和锦里哪个好玩",
+    "city": "chengdu",
+    "expected_chunks": ["chengdu_chunk_002", "chengdu_chunk_003"]
+  }
+]
