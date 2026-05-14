@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import AMapLoader from "@amap/amap-jsapi-loader";
 import type { DayPlan, SpotItem } from "../types";
 import { useAppStore } from "../stores/app";
@@ -16,6 +16,7 @@ const emit = defineEmits<{
 
 const store = useAppStore();
 const AMAP_KEY = import.meta.env.VITE_AMAP_JS_KEY || "";
+const AMAP_SECRET = import.meta.env.VITE_AMAP_SECRET || "";
 const mapContainer = ref<HTMLDivElement>();
 const mapLoaded = ref(false);
 const mapError = ref("");
@@ -71,12 +72,24 @@ function buildInfoContent(spot: SpotItem): string {
 
 async function initMap() {
   if (!AMAP_KEY) {
-    mapError.value = "地图 Key 未配置，请在 frontend/.env 中设置 VITE_AMAP_JS_KEY";
+    mapError.value = "地图 JS Key 未配置，请在 frontend/.env 中设置 VITE_AMAP_JS_KEY";
     return;
   }
   if (!mapContainer.value) return;
 
+  // Destroy previous instance before re-creating
+  if (mapInstance) {
+    destroyMap();
+  }
+
   try {
+    // Set Amap security config BEFORE loading the SDK (required for v2.0)
+    if (AMAP_SECRET) {
+      (window as any)._AMapSecurityConfig = {
+        securityJsCode: AMAP_SECRET,
+      };
+    }
+
     AMapLib = await AMapLoader.load({
       key: AMAP_KEY,
       version: "2.0",
@@ -111,11 +124,24 @@ async function initMap() {
       center,
     });
 
+    // Ensure map fills container after init (fixes "half shown" issue)
+    mapInstance.on("complete", () => {
+      mapInstance?.resize?.();
+    });
+
     renderTrips();
     mapLoaded.value = true;
+    mapError.value = "";
   } catch (err: any) {
-    console.error("AMap load failed:", err);
-    mapError.value = "地图加载失败，请检查网络或高德 JS API Key 是否正确";
+    const msg = err?.message || String(err);
+    console.error("[AmapTripMap] 地图加载失败:", msg);
+    if (msg.includes("security")) {
+      mapError.value = "安全密钥错误，请检查 frontend/.env 中的 VITE_AMAP_SECRET";
+    } else if (msg.includes("key") || msg.includes("Key")) {
+      mapError.value = "JS Key 无效，请检查 frontend/.env 中的 VITE_AMAP_JS_KEY";
+    } else {
+      mapError.value = "地图加载失败，请检查网络或高德 JS API Key / 安全密钥是否正确";
+    }
   }
 }
 
@@ -194,7 +220,11 @@ function locateSpot(dayIndex: number, spotIndex: number) {
 
 function destroyMap() {
   if (mapInstance) {
-    mapInstance.destroy();
+    try {
+      mapInstance.destroy();
+    } catch (e) {
+      // ignore destroy errors
+    }
     mapInstance = null;
   }
   markerMap.clear();
@@ -215,13 +245,20 @@ watch(
 watch(
   () => store.activeKey,
   (key) => {
-    if (key === "result" && mapInstance) {
-      setTimeout(() => mapInstance?.resize?.(), 200);
+    if (key === "result") {
+      nextTick(() => {
+        setTimeout(() => mapInstance?.resize?.(), 300);
+      });
     }
   }
 );
 
-onMounted(() => initMap());
+onMounted(() => {
+  nextTick(() => {
+    initMap();
+  });
+});
+
 onUnmounted(() => destroyMap());
 
 defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
@@ -235,8 +272,8 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
     <div v-else-if="!mapLoaded && !AMAP_KEY" class="map-placeholder">
       <p>地图 Key 未配置</p>
     </div>
-    <div ref="mapContainer" class="map-box" :class="{ 'map-hidden': !AMAP_KEY && !mapLoaded }"></div>
-    <div v-if="missingCoordsHint" class="coords-hint">
+    <div ref="mapContainer" class="map-box"></div>
+    <div v-if="missingCoordsHint && !mapError" class="coords-hint">
       ⚠️ {{ missingCoordsHint }}
     </div>
   </div>
@@ -246,29 +283,28 @@ defineExpose({ locateSpot, hasValidCoords, missingCoordsHint });
 .amap-container {
   position: relative;
   width: 100%;
-  height: 100%;
-  min-height: 400px;
+  height: 500px;
   border-radius: 14px;
   overflow: hidden;
   background: #f5f5f5;
 }
 .map-box {
   width: 100%;
-  height: 400px;
-}
-.map-hidden {
-  display: none;
+  height: 500px;
 }
 .map-placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 400px;
+  width: 100%;
+  height: 500px;
   color: #999;
 }
 .map-error p {
   color: #ff4d4f;
   font-weight: 500;
+  text-align: center;
+  padding: 0 24px;
 }
 .coords-hint {
   position: absolute;
