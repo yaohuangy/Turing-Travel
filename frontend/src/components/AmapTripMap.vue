@@ -51,28 +51,33 @@ function collectValidPoints(): { points: [number, number][]; count: number; tota
   return { points, count: points.length, total };
 }
 
-function buildInfoContent(spot: SpotItem, dayIdx: number, spotIdx: number): string {
+function buildInfoContent(spot: SpotItem, dayIdx: number, spotIdx: number, color: string): string {
   const imgEl = spot.image_url
-    ? `<br/><img src="${spot.image_url}" style="max-width:200px;max-height:150px;margin-top:6px;border-radius:6px" onerror="this.style.display='none'" />`
+    ? `<br/><img src="${spot.image_url}" style="max-width:240px;max-height:160px;margin-top:8px;border-radius:8px" onerror="this.style.display='none'" />`
     : "";
   return `
-    <div style="max-width:260px;font-size:13px;line-height:1.6">
-      <span style="font-size:11px;color:#999;background:#f0f0f0;padding:1px 6px;border-radius:4px">D${dayIdx + 1} · 第${spotIdx + 1}站</span>
-      <br/>
-      <strong style="font-size:14px">${spot.name}</strong>
-      ${spot.visit_duration ? `<br/>⏱ 建议游玩：${spot.visit_duration}` : ""}
-      ${spot.address ? `<br/>📍 ${spot.address}` : ""}
-      ${spot.description ? `<br/><span style="color:#666">${spot.description}</span>` : ""}
+    <div style="max-width:280px;font-size:13px;line-height:1.7">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="background:${color};color:#fff;width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:700">${spotIdx + 1}</span>
+        <strong style="font-size:15px;color:#333">${spot.name}</strong>
+      </div>
+      <span style="font-size:11px;color:#999;background:#f5f5f5;padding:2px 8px;border-radius:10px">D${dayIdx + 1} · 第${spotIdx + 1}站</span>
+      ${spot.visit_duration ? `<br/>⏱ <span style="color:#666">建议游玩：<b>${spot.visit_duration}</b></span>` : ""}
+      ${spot.address ? `<br/>📍 <span style="color:#555">${spot.address}</span>` : ""}
+      ${spot.description ? `<br/><span style="color:#888;font-size:12px">${spot.description}</span>` : ""}
       ${imgEl}
     </div>`;
 }
 
 function buildMarkerContent(spotName: string, dayIdx: number, color: string): string {
   const d = dayIdx + 1;
+  // Pin-style marker: colored circle with day number + name beside it
   return `
-    <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${color};color:#fff;border-radius:20px;font-size:11px;white-space:nowrap;cursor:pointer;font-weight:500;box-shadow:0 2px 6px rgba(0,0,0,0.25)">
-      <span style="background:rgba(255,255,255,0.25);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">${d}</span>
-      ${spotName}
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div style="width:28px;height:28px;background:${color};border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,0.3);flex-shrink:0;">
+        ${d}
+      </div>
+      <span style="background:rgba(255,255,255,0.95);color:#333;padding:3px 8px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,0.15);">${spotName}</span>
     </div>`;
 }
 
@@ -157,7 +162,7 @@ function renderTrips() {
   mapInstance.clearMap();
   markerMap.clear();
 
-  const infoWindow = new AMapLib.InfoWindow({ offset: new AMapLib.Pixel(0, -36) });
+  const infoWindow = new AMapLib.InfoWindow({ offset: new AMapLib.Pixel(0, -18) });
   const allPoints: any[] = [];
   let totalValidSpots = 0;
 
@@ -184,11 +189,11 @@ function renderTrips() {
         position: pt,
         content: buildMarkerContent(spot.name, day.day_index, color),
         zIndex: 100,
-        offset: new AMapLib.Pixel(0, -10),
+        offset: new AMapLib.Pixel(-44, -14),
       });
 
       marker.on("click", () => {
-        infoWindow.setContent(buildInfoContent(spot, day.day_index, si));
+        infoWindow.setContent(buildInfoContent(spot, day.day_index, si, color));
         infoWindow.open(mapInstance, marker.getPosition());
         emit("marker-click", spot, day.day_index);
       });
