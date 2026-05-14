@@ -9,6 +9,7 @@ import {
   EditOutlined,
   PictureOutlined,
   AimOutlined,
+  CarOutlined,
 } from "@ant-design/icons-vue";
 import type { DayPlan, SpotItem } from "../types";
 import { editTrip, saveTrip, exportMarkdownUrl, exportPdfUrl, downloadExportedMarkdown, downloadExportedPdf } from "../services/api";
@@ -21,8 +22,16 @@ const collapseKeys = ref<string[]>([]);
 const saving = ref(false);
 const tripId = ref<string | null>(null);
 const navSection = ref("overview");
-const highlightedSpot = ref<string | null>(null); // "dayIndex-spotIndex"
+const highlightedSpot = ref<string | null>(null);
 const mapRef = ref<InstanceType<typeof AmapTripMap> | null>(null);
+
+const DAY_COLORS = [
+  "#E74C3C", "#3498DB", "#2ECC71", "#F39C12",
+  "#9B59B6", "#1ABC9C", "#E67E22", "#2980B9",
+];
+function dayColor(dayIndex: number): string {
+  return DAY_COLORS[dayIndex % DAY_COLORS.length];
+}
 
 function weatherIcon(condition: string) {
   if (!condition) return "🌤️";
@@ -121,33 +130,45 @@ async function handleEditSubmit() {
   }
 }
 
-// ---- Marker ↔ Spot list interaction ----
+// ---- Marker / Spot list / Point-detail interaction ----
 function onMarkerClick(spot: SpotItem, dayIndex: number) {
-  // Find spot index in that day
   const day = store.itinerary?.days?.[dayIndex];
   if (!day) return;
   const spotIndex = day.spots.findIndex((s) => s.name === spot.name);
-  const key = `${dayIndex}-${spotIndex}`;
+  highlightAndScroll(dayIndex, spotIndex);
+}
 
-  // Highlight
+function highlightAndScroll(dayIndex: number, spotIndex: number) {
+  const key = `${dayIndex}-${spotIndex}`;
   highlightedSpot.value = key;
   setTimeout(() => { highlightedSpot.value = null; }, 3000);
 
-  // Expand the correct day panel
+  // Expand day panel
   const dayKey = String(dayIndex);
   if (!collapseKeys.value.includes(dayKey)) {
     collapseKeys.value = [...collapseKeys.value, dayKey];
   }
 
-  // Scroll to the spot card
+  // Scroll left panel spot card into view
   nextTick(() => {
     const el = document.getElementById(`spot-${dayIndex}-${spotIndex}`);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+
+  // Scroll right panel point-detail item into view
+  nextTick(() => {
+    const el = document.getElementById(`pd-${dayIndex}-${spotIndex}`);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
 }
 
 function handleLocateSpot(dayIndex: number, spotIndex: number) {
   mapRef.value?.locateSpot(dayIndex, spotIndex);
+  highlightAndScroll(dayIndex, spotIndex);
+}
+
+function handlePointDetailClick(dayIndex: number, spotIndex: number) {
+  handleLocateSpot(dayIndex, spotIndex);
 }
 
 // ---- Budget ----
@@ -211,11 +232,10 @@ const budgetCols = [
         />
       </div>
 
-      <!-- Content row -->
+      <!-- Content row: left 60% itinerary, right 40% map + point-detail -->
       <a-row :gutter="16" class="content-row">
-        <!-- Left: days -->
+        <!-- Left: daily itinerary -->
         <a-col :xs="24" :lg="14">
-          <!-- Weather summary -->
           <div id="daily" class="section-anchor"></div>
           <a-collapse
             v-model:activeKey="collapseKeys"
@@ -246,7 +266,6 @@ const budgetCols = [
               </template>
 
               <div class="day-content">
-                <!-- Spots -->
                 <div class="spots-list">
                   <div
                     v-for="(spot, si) in day.spots"
@@ -286,22 +305,17 @@ const budgetCols = [
                   </div>
                 </div>
 
-                <!-- Meals -->
                 <a-divider style="margin:12px 0" />
                 <div class="meals-strip">
                   <a-tag color="blue">🍳 {{ getMealLabel(day, 'breakfast') }}</a-tag>
                   <a-tag color="orange">🍜 {{ getMealLabel(day, 'lunch') }}</a-tag>
                   <a-tag color="purple">🍲 {{ getMealLabel(day, 'dinner') }}</a-tag>
                 </div>
-
-                <!-- Hotel -->
                 <div v-if="day.hotel" class="hotel-line">
                   🏨 <strong>{{ day.hotel.name }}</strong>
                   <span v-if="day.hotel.location"> · {{ day.hotel.location }}</span>
                   <a-tag v-if="day.hotel.estimated_price" color="gold">¥{{ day.hotel.estimated_price }}/晚</a-tag>
                 </div>
-
-                <!-- Route -->
                 <div v-if="day.route_estimate" class="route-line">
                   <a-tag color="green">
                     🚗 {{ day.route_estimate.distance_km }} km / {{ day.route_estimate.duration_min }} min
@@ -312,15 +326,67 @@ const budgetCols = [
           </a-collapse>
         </a-col>
 
-        <!-- Right: map -->
+        <!-- Right: map + point-detail list -->
         <a-col :xs="24" :lg="10">
-          <div class="map-sticky">
-            <AmapTripMap
-              ref="mapRef"
-              :days="store.itinerary.days"
-              class="map-card"
-              @marker-click="onMarkerClick"
-            />
+          <div class="right-panel">
+            <!-- Map -->
+            <div class="map-wrapper">
+              <AmapTripMap
+                ref="mapRef"
+                :days="store.itinerary.days"
+                class="map-card"
+                @marker-click="onMarkerClick"
+              />
+            </div>
+
+            <!-- Point detail list -->
+            <div class="point-detail-panel">
+              <div class="pd-title">📍 点位明细</div>
+              <div class="pd-list">
+                <template v-for="day in store.itinerary.days" :key="'pd-day-' + day.day_index">
+                  <div class="pd-day-header" :style="{ color: dayColor(day.day_index) }">
+                    <span class="pd-day-dot" :style="{ background: dayColor(day.day_index) }"></span>
+                    D{{ day.day_index + 1 }} · {{ day.date }}
+                  </div>
+                  <div
+                    v-for="(spot, si) in day.spots"
+                    :key="'pd-' + day.day_index + '-' + si"
+                    :id="`pd-${day.day_index}-${si}`"
+                    :class="['pd-item', {
+                      'pd-item-active': highlightedSpot === `${day.day_index}-${si}`,
+                      'pd-item-nocoord': !spotHasCoords(spot),
+                    }]"
+                    @click="handlePointDetailClick(day.day_index, si)"
+                  >
+                    <div class="pd-item-left">
+                      <div class="pd-item-name">
+                        <span class="pd-item-num" :style="{ background: dayColor(day.day_index) }">{{ si + 1 }}</span>
+                        {{ spot.name }}
+                      </div>
+                      <div v-if="spot.address" class="pd-item-addr">📍 {{ spot.address }}</div>
+                      <div v-else class="pd-item-addr pd-no-addr">暂无地址信息</div>
+                    </div>
+                    <div class="pd-item-right">
+                      <div v-if="day.route_estimate" class="pd-item-traffic">
+                        <CarOutlined />
+                        <span>{{ day.route_estimate.distance_km }}km</span>
+                        <span>{{ day.route_estimate.duration_min }}min</span>
+                      </div>
+                      <div v-else class="pd-item-traffic pd-no-traffic">—</div>
+                      <a-button
+                        size="small"
+                        type="text"
+                        :disabled="!spotHasCoords(spot)"
+                        class="pd-locate-btn"
+                        @click.stop="handleLocateSpot(day.day_index, si)"
+                      >
+                        <AimOutlined />
+                      </a-button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
           </div>
         </a-col>
       </a-row>
@@ -393,6 +459,7 @@ const budgetCols = [
 <style scoped>
 .result-page { padding: 8px 0 16px; }
 
+/* Header */
 .result-header {
   display: flex;
   align-items: center;
@@ -417,12 +484,10 @@ const budgetCols = [
   background: #fff;
   padding: 8px 0;
 }
-
 .section-anchor { scroll-margin-top: 80px; }
-
-/* Content */
 .content-row { margin-bottom: 16px; }
 
+/* Left: day panels */
 .day-collapse { background: transparent; }
 .day-panel {
   margin-bottom: 10px !important;
@@ -432,7 +497,6 @@ const budgetCols = [
   transition: box-shadow 0.2s;
 }
 .day-panel:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-
 .day-header { display: flex; align-items: center; gap: 10px; flex: 1; }
 .day-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -448,7 +512,6 @@ const budgetCols = [
 
 /* Spot cards */
 .spots-list { scroll-margin-top: 60px; }
-
 .spot-card {
   display: flex; gap: 12px; align-items: flex-start;
   padding: 10px; margin-bottom: 8px;
@@ -458,13 +521,11 @@ const budgetCols = [
   scroll-margin-top: 80px;
 }
 .spot-card:hover { background: #f5f5f5; }
-
 .spot-highlighted {
   background: #e6f7ff !important;
   border-color: #1677ff !important;
   box-shadow: 0 0 0 3px rgba(22,119,255,0.15);
 }
-
 .spot-image-placeholder {
   flex-shrink: 0; width: 60px; height: 60px;
   background: #f0f0f0; border-radius: 8px;
@@ -475,26 +536,151 @@ const budgetCols = [
 .spot-title { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
 .spot-desc { color: #666; font-size: 13px; margin: 2px 0; }
 .spot-addr { color: #999; font-size: 12px; }
-
 .spot-actions {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  opacity: 0;
-  transition: opacity 0.2s;
+  flex-shrink: 0; display: flex; align-items: center;
+  opacity: 0; transition: opacity 0.2s;
 }
 .spot-card:hover .spot-actions { opacity: 1; }
 
-/* Meals */
+/* Meals / Hotel / Route */
 .meals-strip { display: flex; gap: 8px; flex-wrap: wrap; }
 .hotel-line { margin-top: 8px; font-size: 13px; }
 .route-line { margin-top: 6px; }
 
-/* Map */
-.map-sticky { position: sticky; top: 60px; }
+/* Right panel */
+.right-panel {
+  position: sticky;
+  top: 60px;
+}
+.map-wrapper {
+  margin-bottom: 12px;
+}
 .map-card {
-  height: 500px; border-radius: 14px; overflow: hidden;
-  box-shadow: 0 2px 16px rgba(0,0,0,0.06); border: 1px solid #eee;
+  height: 400px;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 2px 16px rgba(0,0,0,0.06);
+  border: 1px solid #eee;
+}
+
+/* Point detail panel */
+.point-detail-panel {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #eee;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.04);
+  overflow: hidden;
+}
+.pd-title {
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+.pd-list {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.pd-day-header {
+  padding: 10px 16px 4px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+}
+.pd-day-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.pd-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-left: 3px solid transparent;
+  scroll-margin-top: 60px;
+}
+.pd-item:hover {
+  background: #f5f7fa;
+}
+.pd-item-active {
+  background: #e6f7ff !important;
+  border-left-color: #1677ff !important;
+}
+.pd-item-nocoord {
+  opacity: 0.55;
+}
+.pd-item-left {
+  flex: 1;
+  min-width: 0;
+}
+.pd-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.pd-item-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.pd-item-addr {
+  font-size: 11px;
+  color: #999;
+  margin-left: 24px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pd-no-addr {
+  font-style: italic;
+  color: #ccc;
+}
+.pd-item-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.pd-item-traffic {
+  font-size: 11px;
+  color: #1a936f;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.pd-no-traffic {
+  color: #ccc;
+}
+.pd-locate-btn {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.pd-item:hover .pd-locate-btn {
+  opacity: 1;
 }
 
 /* Budget */
@@ -507,8 +693,13 @@ const budgetCols = [
 .bar-fill { height: 100%; border-radius: 9px; transition: width 0.4s ease; }
 .bar-val { min-width: 60px; text-align: right; font-size: 13px; font-weight: 500; }
 
+/* Responsive */
+@media (max-width: 1200px) {
+  .pd-list { max-height: 280px; }
+}
 @media (max-width: 992px) {
-  .map-sticky { position: static; margin-top: 16px; }
+  .right-panel { position: static; margin-top: 16px; }
   .map-card { height: 350px; }
+  .pd-list { max-height: 300px; }
 }
 </style>
