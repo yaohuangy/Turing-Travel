@@ -36,29 +36,18 @@ async def _enrich_with_map_data(days: list, destination: str) -> None:
         for spot in spots:
             name = spot.get("name", "")
             poi = await map_service.search_poi(name, destination)
-            if not poi and len(name) >= 2:
-                # Try shorter keyword (remove suffixes like 景区/公园/古镇)
-                short = name.rstrip("景区公园古镇南门北门东西门入口停车场")
-                if short != name:
-                    poi = await map_service.search_poi(short, destination)
             if poi:
                 spot["address"] = poi["address"]
                 spot["location"] = poi["location"]
                 spot["poi_id"] = poi.get("poi_id")
                 logger.info("Enriched spot '%s': address=%s, location=%s", name, poi["address"], poi["location"])
             else:
-                # Try multiple geocode strategies
-                lnglat = None
-                for addr in [f"{destination}{name}", f"{destination}市{name}", name]:
-                    lnglat = await map_service.geocode(addr)
-                    if lnglat:
-                        spot["location"] = {"lng": lnglat[0], "lat": lnglat[1]}
-                        if spot.get("address"):
-                            spot.setdefault("address", addr)
-                        logger.info("Geocode fallback for spot '%s' via '%s': (%.4f, %.4f)", name, addr, lnglat[0], lnglat[1])
-                        break
-                if not lnglat:
-                    logger.warning("No map data for spot '%s' in %s", name, destination)
+                lnglat = await map_service.geocode(f"{destination}{name}")
+                if lnglat:
+                    spot["location"] = {"lng": lnglat[0], "lat": lnglat[1]}
+                    logger.info("Geocode fallback for spot '%s': (%.6f, %.6f)", name, lnglat[0], lnglat[1])
+                else:
+                    logger.warning("No map data for spot '%s'", name)
             enriched_spots.append(spot)
 
         day["spots"] = enriched_spots
