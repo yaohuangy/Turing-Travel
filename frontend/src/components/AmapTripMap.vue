@@ -121,17 +121,16 @@ async function initMap() {
 
     mapInstance = new AMapLib.Map(mapContainer.value, {
       zoom,
-      center,
+      center: new AMapLib.LngLat(center[0], center[1]),
     });
 
-    // Ensure map fills container after init (fixes "half shown" issue)
-    mapInstance.on("complete", () => {
-      mapInstance?.resize?.();
-    });
-
-    renderTrips();
     mapLoaded.value = true;
     mapError.value = "";
+
+    // Render after map is complete to ensure container is sized
+    mapInstance.on("complete", () => {
+      renderTrips();
+    });
   } catch (err: any) {
     const msg = err?.message || String(err);
     console.error("[AmapTripMap] 地图加载失败:", msg);
@@ -152,11 +151,11 @@ function renderTrips() {
   markerMap.clear();
 
   const infoWindow = new AMapLib.InfoWindow({ offset: new AMapLib.Pixel(0, -30) });
-  const allPoints: [number, number][] = [];
+  const allPoints: any[] = [];
 
   for (const day of props.days) {
     const color = dayColor(day.day_index);
-    const dayPoints: [number, number][] = [];
+    const dayPoints: any[] = [];
 
     for (let si = 0; si < day.spots.length; si++) {
       const spot = day.spots[si];
@@ -164,7 +163,7 @@ function renderTrips() {
 
       if (!spotHasCoords(spot)) continue;
 
-      const pt: [number, number] = [spot.location!.lng, spot.location!.lat];
+      const pt = new AMapLib.LngLat(spot.location!.lng, spot.location!.lat);
       dayPoints.push(pt);
       allPoints.push(pt);
 
@@ -212,7 +211,7 @@ function locateSpot(dayIndex: number, spotIndex: number) {
   const key = `${dayIndex}-${spotIndex}`;
   const marker = markerMap.get(key);
   if (marker) {
-    const pos = marker.getPosition();
+    const pos = marker.getPosition(); // returns LngLat
     mapInstance.setZoomAndCenter(16, pos);
     marker.emit("click");
   }
